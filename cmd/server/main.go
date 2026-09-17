@@ -1,0 +1,80 @@
+package main
+
+import (
+	"PFnPTA/internal/config"
+	"PFnPTA/internal/handler"
+	"PFnPTA/internal/middleware"
+	"PFnPTA/internal/repository"
+	"PFnPTA/internal/service"
+	"context"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
+)
+
+func main() {
+	log.Println("portfolio tracker starting...")
+
+	cfg := config.Load()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", handler.HealthHandler)
+
+	ctx := context.Background()
+	userRepository, err := repository.NewPostgresRepository(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	defer userRepository.Close(ctx)
+	userService := service.NewUserService(userRepository)
+	jwtService := service.NewJWTService(cfg.JWTSecret)
+	authMiddleware := middleware.NewAuthMiddleware(jwtService)
+	userHandler := handler.NewUserHandler(userService, jwtService)
+
+	assetRepository := repository.NewPostgresAssetRepository(userRepository)
+	assetService := service.NewAssetService(assetRepository)
+	assetHandler := handler.NewAssetHandler(assetService)
+
+	transactionRepository := repository.NewPostgresTransactionRepository(userRepository)
+	transactionService := service.NewTransactionService(transactionRepository)
+	transactionHandler := handler.NewTransactionHandler(transactionService)
+
+	mux.HandleFunc("/register", userHandler.Register)
+	mux.HandleFunc("/login", userHandler.Login)
+	mux.HandleFunc("/assets", assetHandler.HandelCollection)
+	mux.HandleFunc("/assets/", assetHandler.HandelByID)
+	mux.HandleFunc("/transactions", transactionHandler.HandleCollection)
+	mux.HandleFunc("/transactions/", transactionHandler.GetByID)
+	mux.Handle("/me", authMiddleware.RequireAuth(http.HandlerFunc(userHandler.Me)))
+
+	server := http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: mux,
+	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(
+		stop,
+		os.Interrupt,
+	)
+
+	go func() {
+		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("An error occurred while starting the server: %v", err)
+		} else {
+			log.Printf("Server was successfully stopped")
+		}
+	}()
+
+	<-stop
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("Failed to shut down the server correctly: %v", err)
+	}
+}

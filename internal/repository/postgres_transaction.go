@@ -49,6 +49,38 @@ func (r *PostgresTransactionRepository) FindByID(ctx context.Context, id int64) 
 	return &transaction, nil
 }
 
+func (r *PostgresTransactionRepository) FindByIDAndUserID(ctx context.Context, transactionID int64, userID int64) (*model.Transaction, error) {
+	var transaction model.Transaction
+
+	err := r.repo.db.QueryRow(
+		ctx,
+		`SELECT id, user_id, asset_id, type, quantity, price, commission, crated_at
+		FROM transactions
+		WHERE id = $1 AND user_id = $2`,
+		transactionID,
+		userID,
+	).Scan(
+		&transaction.ID,
+		&transaction.UserID,
+		&transaction.AssetID,
+		&transaction.Type,
+		&transaction.Quantity,
+		&transaction.Price,
+		&transaction.Commission,
+		&transaction.CreatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrTransactionNotFound
+		}
+
+		return nil, err
+	}
+
+	return &transaction, nil
+}
+
 func (r *PostgresTransactionRepository) FindByUserID(ctx context.Context, userID int64) ([]*model.Transaction, error) {
 	rows, err := r.repo.db.Query(
 		ctx,

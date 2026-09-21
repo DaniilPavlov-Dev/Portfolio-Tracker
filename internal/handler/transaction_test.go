@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"PFnPTA/internal/middleware"
 	"PFnPTA/internal/model"
 	"PFnPTA/internal/repository"
 	"PFnPTA/internal/service"
@@ -19,7 +20,6 @@ func TestTransactionHandler_Create(t *testing.T) {
 	handler := NewTransactionHandler(service)
 
 	body := bytes.NewBufferString(`{
-		"userId": 1,
 		"assetId": 1,
 		"type": "BUY",
 		"quantity": 0.5,
@@ -32,6 +32,8 @@ func TestTransactionHandler_Create(t *testing.T) {
 		"/transactions",
 		body,
 	)
+
+	req = req.WithContext(middleware.ContextWithUserID(req.Context(), 1))
 
 	rec := httptest.NewRecorder()
 
@@ -108,7 +110,6 @@ func TestTransactionHandler_Create_InvalidTransaction(t *testing.T) {
 	handler := NewTransactionHandler(service)
 
 	body := bytes.NewBufferString(`{
-		"userId": 1,
 		"assetId": 1,
 		"type": "BUY",
 		"quantity": 0,
@@ -121,6 +122,7 @@ func TestTransactionHandler_Create_InvalidTransaction(t *testing.T) {
 		"/transactions",
 		body,
 	)
+	req = req.WithContext(middleware.ContextWithUserID(req.Context(), 1))
 
 	rec := httptest.NewRecorder()
 
@@ -174,6 +176,10 @@ func TestTransactionHandler_GetByID(t *testing.T) {
 		http.MethodGet,
 		"/transactions/"+strconv.FormatInt(transaction.ID, 10),
 		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 1),
 	)
 
 	rec := httptest.NewRecorder()
@@ -234,6 +240,10 @@ func TestTransactionHandler_GetByID_NotFound(t *testing.T) {
 		nil,
 	)
 
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 1),
+	)
+
 	rec := httptest.NewRecorder()
 
 	handler.GetByID(rec, req)
@@ -254,6 +264,10 @@ func TestTransactionHandler_GetByID_InvalidID(t *testing.T) {
 		nil,
 	)
 
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 1),
+	)
+
 	rec := httptest.NewRecorder()
 
 	handler.GetByID(rec, req)
@@ -261,6 +275,45 @@ func TestTransactionHandler_GetByID_InvalidID(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("got status %d, want %d", rec.Code, http.StatusBadRequest)
 	}
+}
+
+func TestTransactionHandler_GetByID_Forbidden(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+
+	transaction := &model.Transaction{
+		UserID:     2,
+		AssetID:    1,
+		Type:       model.TransactionBuy,
+		Quantity:   0.5,
+		Price:      60000,
+		Commission: 10,
+	}
+
+	if err := repo.Create(context.Background(), transaction); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	service := service.NewTransactionService(repo)
+	handler := NewTransactionHandler(service)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/transactions/1",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 1),
+	)
+
+	rec := httptest.NewRecorder()
+
+	handler.GetByID(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("got status %d, want %d", rec.Code, http.StatusNotFound)
+	}
+
 }
 
 func TestTransactionHandler_GetByID_MethodNotAllowed(t *testing.T) {
@@ -326,9 +379,12 @@ func TestTransactionHandler_GetByUserID(t *testing.T) {
 
 	req := httptest.NewRequest(
 		http.MethodGet,
-		"/transactions?userId=1",
+		"/transactions",
 		nil,
 	)
+
+	req = req.WithContext(middleware.ContextWithUserID(req.Context(), 1))
+
 	rec := httptest.NewRecorder()
 
 	handler.GetByUserID(rec, req)
@@ -361,9 +417,10 @@ func TestTransactionHandler_GetByUserID_Empty(t *testing.T) {
 
 	req := httptest.NewRequest(
 		http.MethodGet,
-		"/transactions?userId=999",
+		"/transactions",
 		nil,
 	)
+	req = req.WithContext(middleware.ContextWithUserID(req.Context(), 1))
 
 	rec := httptest.NewRecorder()
 
@@ -384,14 +441,14 @@ func TestTransactionHandler_GetByUserID_Empty(t *testing.T) {
 	}
 }
 
-func TestTransactionHandler_GetByUserID_InvalidID(t *testing.T) {
+func TestTransactionHandler_GetByUserID_Unauthorized(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
 	transactionService := service.NewTransactionService(repo)
 	handler := NewTransactionHandler(transactionService)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
-		"/transactions?userId=abc",
+		"/transactions?userId",
 		nil,
 	)
 
@@ -399,8 +456,8 @@ func TestTransactionHandler_GetByUserID_InvalidID(t *testing.T) {
 
 	handler.GetByUserID(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("got status %d, want %d", rec.Code, http.StatusBadRequest)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("got status %d, want %d", rec.Code, http.StatusUnauthorized)
 	}
 }
 
@@ -421,5 +478,25 @@ func TestTransactionHandler_GetByUserID_MethodNotAllowed(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("got status %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestTransactionHandler_GetByID_Unauthorized(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	transactionService := service.NewTransactionService(repo)
+	handler := NewTransactionHandler(transactionService)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/transactions/1",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	handler.GetByID(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("got status %d, want %d", rec.Code, http.StatusUnauthorized)
 	}
 }

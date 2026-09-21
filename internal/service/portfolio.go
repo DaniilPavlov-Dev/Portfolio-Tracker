@@ -2,12 +2,28 @@ package service
 
 import (
 	"PFnPTA/internal/model"
+	"PFnPTA/internal/repository"
+	"context"
 )
 
 type portfolioState struct {
 	quantity           float64
 	averagePrice       float64
 	realizedProfitLoss float64
+}
+
+type PortfolioService struct {
+	transactionRepo repository.TransactionRepository
+	assetRepo       repository.AssetRepository
+	marketData      MarketDataProvider
+}
+
+type MarketDataProvider interface {
+	GetPrice(ctx context.Context, symbol string) (float64, error)
+}
+
+func NewPortfolioService(transactionRepo repository.TransactionRepository, assetRepo repository.AssetRepository, marketData MarketDataProvider) *PortfolioService {
+	return &PortfolioService{transactionRepo: transactionRepo, assetRepo: assetRepo, marketData: marketData}
 }
 
 func CalculatePositionValue(quantity, currentPrice float64) float64 {
@@ -21,10 +37,19 @@ func CalculateProfitLossPercent(quantity, averagePrice, currentPrice float64) fl
 	return (currentPrice - averagePrice) / averagePrice * 100
 }
 
-func BuildPosition(transactions []*model.Transaction) *model.PortfolioPosition {
+func BuildPosition(assetID int64, transactions []*model.Transaction, currentPrice float64) *model.PortfolioPosition {
 	state := calculatePortfolioState(transactions)
 
-	return &model.PortfolioPosition{Quantity: state.quantity, AveragePrice: state.averagePrice}
+	if state.quantity == 0 {
+		return nil
+	}
+
+	position := CalculatePosition(state.quantity, state.averagePrice, currentPrice)
+	position.AssetID = assetID
+
+	position.RealizedProfitLoss = CalculateRealizedProfitLoss(transactions)
+
+	return position
 }
 
 func CalculateRealizedProfitLoss(transactions []*model.Transaction) float64 {
@@ -70,4 +95,61 @@ func calculatePortfolioState(transactions []*model.Transaction) portfolioState {
 
 func CalculateUnrealizedProfitLoss(quantity, averagePrice, currentPrice float64) float64 {
 	return quantity * (currentPrice - averagePrice)
+}
+
+func CalculatePosition(quantity, averagePrice, currentPrice float64) *model.PortfolioPosition {
+	return &model.PortfolioPosition{
+		Quantity:          quantity,
+		AveragePrice:      averagePrice,
+		CurrentPrice:      currentPrice,
+		PositionValue:     CalculatePositionValue(quantity, currentPrice),
+		ProfitLoss:        CalculateUnrealizedProfitLoss(quantity, averagePrice, currentPrice),
+		ProfitLossPercent: CalculateProfitLossPercent(quantity, averagePrice, currentPrice),
+	}
+}
+
+func (s *PortfolioService) GetTransactions(ctx context.Context, userID int64) ([]*model.Transaction, error) {
+	return s.transactionRepo.FindByUserID(ctx, userID)
+}
+
+func groupTransactionsByAsset(transactions []*model.Transaction) map[int64][]*model.Transaction {
+	grouped := make(map[int64][]*model.Transaction)
+
+	for _, transaction := range transactions {
+		grouped[transaction.AssetID] = append(grouped[transaction.AssetID], transaction)
+	}
+
+	return grouped
+}
+
+func (s *PortfolioService) GetPortfolio(ctx context.Context, userID int64) ([]*model.PortfolioPosition, error) {
+	transactions, err := s.transactionRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	grouped := groupTransactionsByAsset(transactions)
+
+	positions := make([]*model.PortfolioPosition, 0, len(grouped))
+
+	for assetID := range grouped {
+		asset, err := s.assetRepo.FindByID(ctx, assetID)
+		if err != nil {
+			return nil, err
+		}
+
+		currentPrice, err := s.marketData.GetPrice(ctx, asset.Symbol)
+		if err != nil {
+			return nil, err
+		}
+
+		position := BuildPosition(assetID, grouped[assetID], currentPrice)
+		if position == nil {
+			continue
+		}
+
+		positions = append(positions, position)
+	}
+
+	return positions, nil
 }

@@ -355,3 +355,70 @@ func TestTransactionService_FindByUserID_Empty(t *testing.T) {
 		t.Errorf("got %d transactions, want 0", len(got))
 	}
 }
+
+func TestTransactionService_FindByIDAndUserID(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	service := NewTransactionService(repo)
+
+	transaction := &model.Transaction{
+		UserID:     1,
+		AssetID:    1,
+		Type:       model.TransactionBuy,
+		Quantity:   0.5,
+		Price:      60000,
+		Commission: 10,
+	}
+
+	if err := service.Create(context.Background(), transaction); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	got, err := service.FindByIDAndUserID(
+		context.Background(),
+		transaction.ID,
+		1,
+	)
+	if err != nil {
+		t.Fatalf("got error %v", err)
+	}
+
+	if got.ID != transaction.ID {
+		t.Errorf("expected id %d, got %d", transaction.ID, got.ID)
+	}
+
+	if got.UserID != 1 {
+		t.Errorf("expected user id %d, got %d", 1, got.UserID)
+	}
+}
+
+func TestTransactionService_FindByIDAndUserID_NotOwner(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	service := NewTransactionService(repo)
+
+	transaction := &model.Transaction{
+		UserID:     2,
+		AssetID:    1,
+		Type:       model.TransactionBuy,
+		Quantity:   0.5,
+		Price:      60000,
+		Commission: 10,
+	}
+
+	if err := service.Create(context.Background(), transaction); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	_, err := service.FindByIDAndUserID(
+		context.Background(),
+		transaction.ID,
+		1,
+	)
+
+	if !errors.Is(err, repository.ErrTransactionNotFound) {
+		t.Fatalf(
+			"got error %v, want %v",
+			err,
+			repository.ErrTransactionNotFound,
+		)
+	}
+}

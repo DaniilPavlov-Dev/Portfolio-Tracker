@@ -4,6 +4,7 @@ import (
 	"PFnPTA/internal/model"
 	"context"
 	"errors"
+	"sort"
 	"time"
 )
 
@@ -50,5 +51,23 @@ func (r *MemoryTransactionRepository) FindByUserID(_ context.Context, id int64) 
 			transactions = append(transactions, transaction)
 		}
 	}
+
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].ID < transactions[j].ID
+	})
+
 	return transactions, nil
+}
+
+func (r *MemoryTransactionRepository) FindByIDAndUserID(_ context.Context, transactionID int64, userID int64) (*model.Transaction, error) {
+	transaction, ok := r.transaction[transactionID]
+	if !ok {
+		return nil, ErrTransactionNotFound
+	}
+
+	if transaction.UserID != userID {
+		return nil, ErrTransactionNotFound
+	}
+
+	return transaction, nil
 }

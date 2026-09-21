@@ -49,6 +49,10 @@ func (s *TransactionService) FindByID(ctx context.Context, id int64) (*model.Tra
 	return s.repo.FindByID(ctx, id)
 }
 
+func (s *TransactionService) FindByIDAndUserID(ctx context.Context, transactionID int64, userID int64) (*model.Transaction, error) {
+	return s.repo.FindByIDAndUserID(ctx, transactionID, userID)
+}
+
 func (s *TransactionService) FindByUserID(ctx context.Context, userID int64) ([]*model.Transaction, error) {
 	return s.repo.FindByUserID(ctx, userID)
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"PFnPTA/internal/middleware"
 	"PFnPTA/internal/model"
 	"PFnPTA/internal/service"
 	"encoding/json"
@@ -14,7 +15,6 @@ type TransactionHandler struct {
 }
 
 type CreateTransactionRequest struct {
-	UserID     int64                 `json:"userId"`
 	AssetID    int64                 `json:"assetId"`
 	Type       model.TransactionType `json:"type"`
 	Quantity   float64               `json:"quantity"`
@@ -39,8 +39,14 @@ func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	transaction := &model.Transaction{
-		UserID:     req.UserID,
+		UserID:     userID,
 		AssetID:    req.AssetID,
 		Type:       req.Type,
 		Quantity:   req.Quantity,
@@ -67,6 +73,12 @@ func (h *TransactionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unathorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/transactions/")
 
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -75,7 +87,7 @@ func (h *TransactionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transaction, err := h.transactionService.FindByID(r.Context(), id)
+	transaction, err := h.transactionService.FindByIDAndUserID(r.Context(), id, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -95,12 +107,10 @@ func (h *TransactionHandler) GetByUserID(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	query := r.URL.Query()
-	userIDStr := query.Get("userId")
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	userID, ok := middleware.GetUserID(r.Context())
 
-	if err != nil {
-		http.Error(w, "invalid user id", http.StatusBadRequest)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 

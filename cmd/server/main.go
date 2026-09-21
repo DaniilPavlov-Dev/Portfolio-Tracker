@@ -1,6 +1,7 @@
 package main
 
 import (
+	"PFnPTA/internal/client"
 	"PFnPTA/internal/config"
 	"PFnPTA/internal/handler"
 	"PFnPTA/internal/middleware"
@@ -19,6 +20,11 @@ func main() {
 	log.Println("portfolio tracker starting...")
 
 	cfg := config.Load()
+
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	marketData := client.NewBinanceMarketDataProvider(httpClient)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handler.HealthHandler)
@@ -42,13 +48,17 @@ func main() {
 	transactionService := service.NewTransactionService(transactionRepository)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
+	portfolioService := service.NewPortfolioService(transactionRepository, assetRepository, marketData)
+	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
+
 	mux.HandleFunc("/register", userHandler.Register)
 	mux.HandleFunc("/login", userHandler.Login)
 	mux.HandleFunc("/assets", assetHandler.HandelCollection)
 	mux.HandleFunc("/assets/", assetHandler.HandelByID)
-	mux.HandleFunc("/transactions", transactionHandler.HandleCollection)
-	mux.HandleFunc("/transactions/", transactionHandler.GetByID)
+	mux.Handle("/transactions", authMiddleware.RequireAuth(http.HandlerFunc(transactionHandler.HandleCollection)))
+	mux.Handle("/transactions/", authMiddleware.RequireAuth(http.HandlerFunc(transactionHandler.GetByID)))
 	mux.Handle("/me", authMiddleware.RequireAuth(http.HandlerFunc(userHandler.Me)))
+	mux.Handle("/portfolio", authMiddleware.RequireAuth(http.HandlerFunc(portfolioHandler.GetPortfolio)))
 
 	server := http.Server{
 		Addr:    ":" + cfg.Port,

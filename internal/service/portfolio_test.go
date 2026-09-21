@@ -745,3 +745,85 @@ func TestPortfolioService_GetPortfolio_CancelsOtherRequests(t *testing.T) {
 		t.Fatal("expected cancellation")
 	}
 }
+
+type slowMarketDataProvider struct {
+	delay time.Duration
+}
+
+func (m *slowMarketDataProvider) GetPrice(ctx context.Context, symbol string) (float64, error) {
+	select {
+	case <-time.After(m.delay):
+		return 100, nil
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+}
+
+func TestPortfolioService_GetPortfolio_ConcurrentMarketData(t *testing.T) {
+	transactionRepo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	marketData := &slowMarketDataProvider{
+		delay: 500 * time.Millisecond,
+	}
+
+	portfolioService := NewPortfolioService(
+		transactionRepo,
+		assetRepo,
+		marketData,
+	)
+
+	btc := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	eth := &model.Asset{
+		Symbol: "ETH",
+		Name:   "Ethereum",
+	}
+
+	if err := assetRepo.Create(context.Background(), btc); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := assetRepo.Create(context.Background(), eth); err != nil {
+		t.Fatal(err)
+	}
+
+	transactions := []*model.Transaction{
+		{
+			UserID:   1,
+			AssetID:  btc.ID,
+			Type:     model.TransactionBuy,
+			Quantity: 1,
+			Price:    100,
+		},
+		{
+			UserID:   1,
+			AssetID:  eth.ID,
+			Type:     model.TransactionBuy,
+			Quantity: 1,
+			Price:    100,
+		},
+	}
+
+	for _, transaction := range transactions {
+		if err := transactionRepo.Create(context.Background(), transaction); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	start := time.Now()
+
+	_, err := portfolioService.GetPortfolio(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	elapsed := time.Since(start)
+
+	if elapsed >= time.Second {
+		t.Fatalf("expected concurrent executuion, took %v", elapsed)
+	}
+}

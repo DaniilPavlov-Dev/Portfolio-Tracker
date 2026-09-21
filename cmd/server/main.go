@@ -45,7 +45,7 @@ func main() {
 	assetHandler := handler.NewAssetHandler(assetService)
 
 	transactionRepository := repository.NewPostgresTransactionRepository(userRepository)
-	transactionService := service.NewTransactionService(transactionRepository)
+	transactionService := service.NewTransactionService(transactionRepository, assetRepository)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
 	portfolioService := service.NewPortfolioService(transactionRepository, assetRepository, marketData)

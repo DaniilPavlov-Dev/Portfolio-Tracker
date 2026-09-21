@@ -8,12 +8,13 @@ import (
 )
 
 type TransactionService struct {
-	repo repository.TransactionRepository
+	repo      repository.TransactionRepository
+	assetRepo repository.AssetRepository
 }
 
-func NewTransactionService(repo repository.TransactionRepository) *TransactionService {
+func NewTransactionService(repo repository.TransactionRepository, assetRepo repository.AssetRepository) *TransactionService {
 	return &TransactionService{
-		repo: repo,
+		repo: repo, assetRepo: assetRepo,
 	}
 }
 
@@ -40,6 +41,11 @@ func (s *TransactionService) Create(ctx context.Context, transaction *model.Tran
 
 	if transaction.Commission < 0 {
 		return errors.New("commission cannot be negative")
+	}
+
+	_, err := s.assetRepo.FindByID(ctx, transaction.AssetID)
+	if err != nil {
+		return err
 	}
 
 	return s.repo.Create(ctx, transaction)

@@ -16,16 +16,40 @@ import (
 
 func TestTransactionHandler_Create(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
-	body := bytes.NewBufferString(`{
-		"assetId": 1,
-		"type": "BUY",
-		"quantity": 0.5,
-		"price": 60000,
-		"commission": 10
-	}`)
+	request := struct {
+		AssetID    int64   `json:"assetId"`
+		Type       string  `json:"type"`
+		Quantity   float64 `json:"quantity"`
+		Price      float64 `json:"price"`
+		Commission float64 `json:"commission"`
+	}{
+		AssetID:    asset.ID,
+		Type:       "BUY",
+		Quantity:   0.5,
+		Price:      60000,
+		Commission: 10,
+	}
+
+	bodyJSON, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := bytes.NewBuffer(bodyJSON)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -84,7 +108,8 @@ func TestTransactionHandler_Create(t *testing.T) {
 
 func TestTransactionHandler_Create_InvalidJSON(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	body := bytes.NewBufferString(`invalid json`)
@@ -106,7 +131,8 @@ func TestTransactionHandler_Create_InvalidJSON(t *testing.T) {
 
 func TestTransactionHandler_Create_InvalidTransaction(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	body := bytes.NewBufferString(`{
@@ -135,7 +161,8 @@ func TestTransactionHandler_Create_InvalidTransaction(t *testing.T) {
 
 func TestTransactionHandler_Create_MethodNotAllowed(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
@@ -169,7 +196,8 @@ func TestTransactionHandler_GetByID(t *testing.T) {
 		t.Fatalf("failed to create transaction: %v", err)
 	}
 
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
@@ -231,7 +259,8 @@ func TestTransactionHandler_GetByID(t *testing.T) {
 
 func TestTransactionHandler_GetByID_NotFound(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
@@ -255,7 +284,8 @@ func TestTransactionHandler_GetByID_NotFound(t *testing.T) {
 
 func TestTransactionHandler_GetByID_InvalidID(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
@@ -293,7 +323,8 @@ func TestTransactionHandler_GetByID_Forbidden(t *testing.T) {
 		t.Fatalf("failed to create transaction: %v", err)
 	}
 
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
@@ -318,7 +349,8 @@ func TestTransactionHandler_GetByID_Forbidden(t *testing.T) {
 
 func TestTransactionHandler_GetByID_MethodNotAllowed(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
@@ -374,8 +406,9 @@ func TestTransactionHandler_GetByUserID(t *testing.T) {
 		t.Fatalf("failed to create transaction: %v", err)
 	}
 
-	transactionService := service.NewTransactionService(repo)
-	handler := NewTransactionHandler(transactionService)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
+	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -412,8 +445,9 @@ func TestTransactionHandler_GetByUserID(t *testing.T) {
 
 func TestTransactionHandler_GetByUserID_Empty(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	transactionService := service.NewTransactionService(repo)
-	handler := NewTransactionHandler(transactionService)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
+	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -443,8 +477,9 @@ func TestTransactionHandler_GetByUserID_Empty(t *testing.T) {
 
 func TestTransactionHandler_GetByUserID_Unauthorized(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	transactionService := service.NewTransactionService(repo)
-	handler := NewTransactionHandler(transactionService)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
+	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -463,7 +498,8 @@ func TestTransactionHandler_GetByUserID_Unauthorized(t *testing.T) {
 
 func TestTransactionHandler_GetByUserID_MethodNotAllowed(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := service.NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
 	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
@@ -483,8 +519,9 @@ func TestTransactionHandler_GetByUserID_MethodNotAllowed(t *testing.T) {
 
 func TestTransactionHandler_GetByID_Unauthorized(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	transactionService := service.NewTransactionService(repo)
-	handler := NewTransactionHandler(transactionService)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := service.NewTransactionService(repo, assetRepo)
+	handler := NewTransactionHandler(service)
 
 	req := httptest.NewRequest(
 		http.MethodGet,

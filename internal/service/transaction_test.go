@@ -10,7 +10,8 @@ import (
 
 func TestTransactionService_Create_InvalidUserID(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID: 0,
@@ -25,7 +26,8 @@ func TestTransactionService_Create_InvalidUserID(t *testing.T) {
 
 func TestTransactionService_Create_NegativeUserID(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID: -1,
@@ -40,7 +42,8 @@ func TestTransactionService_Create_NegativeUserID(t *testing.T) {
 
 func TestTransactionService_Create_InvalidAssetID(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:  1,
@@ -56,7 +59,8 @@ func TestTransactionService_Create_InvalidAssetID(t *testing.T) {
 
 func TestTransactionService_Create_NegativeAssetID(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:  1,
@@ -72,7 +76,8 @@ func TestTransactionService_Create_NegativeAssetID(t *testing.T) {
 
 func TestTransactionService_Create_InvalidType(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:  1,
@@ -89,7 +94,8 @@ func TestTransactionService_Create_InvalidType(t *testing.T) {
 
 func TestTransactionService_Create_EmptyType(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:  1,
@@ -106,7 +112,8 @@ func TestTransactionService_Create_EmptyType(t *testing.T) {
 
 func TestTransactionService_Create_InvalidQuantity(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:   1,
@@ -124,7 +131,8 @@ func TestTransactionService_Create_InvalidQuantity(t *testing.T) {
 
 func TestTransactionService_Create_NegativeQuantity(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:   1,
@@ -142,7 +150,8 @@ func TestTransactionService_Create_NegativeQuantity(t *testing.T) {
 
 func TestTransactionService_Create_InvalidPrice(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:   1,
@@ -161,7 +170,8 @@ func TestTransactionService_Create_InvalidPrice(t *testing.T) {
 
 func TestTransactionService_Create_NegativePrice(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:   1,
@@ -180,7 +190,8 @@ func TestTransactionService_Create_NegativePrice(t *testing.T) {
 
 func TestTransactionService_Create_NegativeCommission(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	transaction := &model.Transaction{
 		UserID:     1,
@@ -200,11 +211,21 @@ func TestTransactionService_Create_NegativeCommission(t *testing.T) {
 
 func TestTransactionService_Create_Success(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
 
 	transaction := &model.Transaction{
 		UserID:     1,
-		AssetID:    1,
+		AssetID:    asset.ID,
 		Type:       model.TransactionBuy,
 		Quantity:   0.5,
 		Price:      60000,
@@ -244,11 +265,21 @@ func TestTransactionService_Create_Success(t *testing.T) {
 
 func TestTransactionService_FindByID(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
 
 	transaction := &model.Transaction{
 		UserID:     1,
-		AssetID:    1,
+		AssetID:    asset.ID,
 		Type:       model.TransactionBuy,
 		Quantity:   0.5,
 		Price:      60000,
@@ -276,7 +307,8 @@ func TestTransactionService_FindByID(t *testing.T) {
 
 func TestTransactionService_FindByID_NotFound(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	_, err := service.FindByID(context.Background(), 999)
 
@@ -287,11 +319,21 @@ func TestTransactionService_FindByID_NotFound(t *testing.T) {
 
 func TestTransactionService_FindByUserID(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
 
 	transaction1 := &model.Transaction{
 		UserID:     1,
-		AssetID:    1,
+		AssetID:    asset.ID,
 		Type:       model.TransactionBuy,
 		Quantity:   0.5,
 		Price:      60000,
@@ -299,7 +341,7 @@ func TestTransactionService_FindByUserID(t *testing.T) {
 	}
 	transaction2 := &model.Transaction{
 		UserID:     1,
-		AssetID:    1,
+		AssetID:    asset.ID,
 		Type:       model.TransactionBuy,
 		Quantity:   0.5,
 		Price:      60000,
@@ -307,7 +349,7 @@ func TestTransactionService_FindByUserID(t *testing.T) {
 	}
 	transaction3 := &model.Transaction{
 		UserID:     2,
-		AssetID:    1,
+		AssetID:    asset.ID,
 		Type:       model.TransactionBuy,
 		Quantity:   0.5,
 		Price:      60000,
@@ -343,7 +385,8 @@ func TestTransactionService_FindByUserID(t *testing.T) {
 
 func TestTransactionService_FindByUserID_Empty(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
 
 	got, err := service.FindByUserID(context.Background(), 999)
 
@@ -358,11 +401,21 @@ func TestTransactionService_FindByUserID_Empty(t *testing.T) {
 
 func TestTransactionService_FindByIDAndUserID(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
 
 	transaction := &model.Transaction{
 		UserID:     1,
-		AssetID:    1,
+		AssetID:    asset.ID,
 		Type:       model.TransactionBuy,
 		Quantity:   0.5,
 		Price:      60000,
@@ -393,11 +446,21 @@ func TestTransactionService_FindByIDAndUserID(t *testing.T) {
 
 func TestTransactionService_FindByIDAndUserID_NotOwner(t *testing.T) {
 	repo := repository.NewMemoryTransactionRepository()
-	service := NewTransactionService(repo)
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
 
 	transaction := &model.Transaction{
 		UserID:     2,
-		AssetID:    1,
+		AssetID:    asset.ID,
 		Type:       model.TransactionBuy,
 		Quantity:   0.5,
 		Price:      60000,

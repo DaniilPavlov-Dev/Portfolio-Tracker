@@ -4,6 +4,7 @@ import (
 	"PFnPTA/internal/model"
 	"PFnPTA/internal/repository"
 	"context"
+	"sync"
 )
 
 type portfolioState struct {
@@ -16,6 +17,11 @@ type PortfolioService struct {
 	transactionRepo repository.TransactionRepository
 	assetRepo       repository.AssetRepository
 	marketData      MarketDataProvider
+}
+
+type positionResult struct {
+	position *model.PortfolioPosition
+	err      error
 }
 
 type MarketDataProvider interface {
@@ -123,6 +129,9 @@ func groupTransactionsByAsset(transactions []*model.Transaction) map[int64][]*mo
 }
 
 func (s *PortfolioService) GetPortfolio(ctx context.Context, userID int64) ([]*model.PortfolioPosition, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	transactions, err := s.transactionRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -132,24 +141,53 @@ func (s *PortfolioService) GetPortfolio(ctx context.Context, userID int64) ([]*m
 
 	positions := make([]*model.PortfolioPosition, 0, len(grouped))
 
-	for assetID := range grouped {
-		asset, err := s.assetRepo.FindByID(ctx, assetID)
-		if err != nil {
-			return nil, err
+	results := make(chan positionResult, len(grouped))
+
+	var wg sync.WaitGroup
+
+	for assetID, transactions := range grouped {
+		wg.Add(1)
+
+		go func(assetID int64, transactions []*model.Transaction) {
+			defer wg.Done()
+
+			position, err := s.buildPosition(ctx, assetID, transactions)
+
+			results <- positionResult{position: position, err: err}
+		}(assetID, transactions)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for result := range results {
+		if result.err != nil {
+			cancel()
+			return nil, result.err
 		}
 
-		currentPrice, err := s.marketData.GetPrice(ctx, asset.Symbol)
-		if err != nil {
-			return nil, err
-		}
-
-		position := BuildPosition(assetID, grouped[assetID], currentPrice)
-		if position == nil {
+		if result.position == nil {
 			continue
 		}
 
-		positions = append(positions, position)
+		positions = append(positions, result.position)
 	}
 
 	return positions, nil
+}
+
+func (s *PortfolioService) buildPosition(ctx context.Context, assetID int64, transactions []*model.Transaction) (*model.PortfolioPosition, error) {
+	asset, err := s.assetRepo.FindByID(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+
+	currentPrice, err := s.marketData.GetPrice(ctx, asset.Symbol)
+	if err != nil {
+		return nil, err
+	}
+
+	return BuildPosition(assetID, transactions, currentPrice), nil
 }

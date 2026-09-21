@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 )
 
 func TestCalculatePositionValue(t *testing.T) {
@@ -661,5 +662,86 @@ func TestBuildPosition_RealizedProfitLoss(t *testing.T) {
 			"expected realized profit/loss 100, got %f",
 			position.RealizedProfitLoss,
 		)
+	}
+}
+
+type cancelAwareMarketDataProvider struct {
+	canceled chan struct{}
+}
+
+func (m *cancelAwareMarketDataProvider) GetPrice(
+	ctx context.Context,
+	symbol string,
+) (float64, error) {
+	if symbol == "BTC" {
+		return 0, errors.New("market data error")
+	}
+
+	<-ctx.Done()
+
+	close(m.canceled)
+	return 0, ctx.Err()
+}
+
+func TestPortfolioService_GetPortfolio_CancelsOtherRequests(t *testing.T) {
+	transactionRepo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	canceled := make(chan struct{})
+
+	marketData := &cancelAwareMarketDataProvider{canceled: canceled}
+
+	portfolioService := NewPortfolioService(transactionRepo, assetRepo, marketData)
+
+	btc := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	eth := &model.Asset{
+		Symbol: "ETH",
+		Name:   "Ethereum",
+	}
+
+	if err := assetRepo.Create(context.Background(), btc); err != nil {
+		t.Fatal(err)
+	}
+	if err := assetRepo.Create(context.Background(), eth); err != nil {
+		t.Fatal(err)
+	}
+
+	transactions := []*model.Transaction{
+		{
+			UserID:   1,
+			AssetID:  btc.ID,
+			Type:     model.TransactionBuy,
+			Quantity: 1,
+			Price:    100,
+		},
+		{
+			UserID:   1,
+			AssetID:  eth.ID,
+			Type:     model.TransactionBuy,
+			Quantity: 1,
+			Price:    100,
+		},
+	}
+
+	for _, transaction := range transactions {
+		if err := transactionRepo.Create(context.Background(), transaction); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := portfolioService.GetPortfolio(context.Background(), 1)
+
+	if err == nil {
+		t.Fatal("expected market data error")
+	}
+
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("expected cancellation")
 	}
 }

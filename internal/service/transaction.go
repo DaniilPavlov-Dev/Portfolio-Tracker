@@ -48,6 +48,22 @@ func (s *TransactionService) Create(ctx context.Context, transaction *model.Tran
 		return err
 	}
 
+	if transaction.Type == model.TransactionSell {
+		transactions, err := s.repo.FindByUserID(ctx, transaction.UserID)
+		if err != nil {
+			return err
+		}
+
+		available := calculateAvailableQuantity(
+			transactions,
+			transaction.AssetID,
+		)
+
+		if transaction.Quantity > available {
+			return errors.New("insufficient quantity")
+		}
+	}
+
 	return s.repo.Create(ctx, transaction)
 }
 
@@ -61,4 +77,23 @@ func (s *TransactionService) FindByIDAndUserID(ctx context.Context, transactionI
 
 func (s *TransactionService) FindByUserID(ctx context.Context, userID int64) ([]*model.Transaction, error) {
 	return s.repo.FindByUserID(ctx, userID)
+}
+
+func calculateAvailableQuantity(transactions []*model.Transaction, assetID int64) float64 {
+	var quantity float64
+
+	for _, transaction := range transactions {
+		if transaction.AssetID != assetID {
+			continue
+		}
+
+		switch transaction.Type {
+		case model.TransactionBuy:
+			quantity += transaction.Quantity
+		case model.TransactionSell:
+			quantity -= transaction.Quantity
+		}
+	}
+
+	return quantity
 }

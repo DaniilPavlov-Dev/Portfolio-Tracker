@@ -485,3 +485,576 @@ func TestTransactionService_FindByIDAndUserID_NotOwner(t *testing.T) {
 		)
 	}
 }
+
+func TestCalculateAvailableQuantity(t *testing.T) {
+	transactions := []*model.Transaction{
+		{
+			AssetID:  1,
+			Type:     model.TransactionBuy,
+			Quantity: 1,
+		},
+	}
+
+	quantity := calculateAvailableQuantity(transactions, 1)
+
+	if quantity != 1 {
+		t.Fatalf("got quantity %v, want 1", quantity)
+	}
+}
+
+func TestCalculateAvailableQuantity_BuyAndSell(t *testing.T) {
+	transactions := []*model.Transaction{
+		{
+			AssetID:  1,
+			Type:     model.TransactionBuy,
+			Quantity: 1,
+		},
+		{
+			AssetID:  1,
+			Type:     model.TransactionSell,
+			Quantity: 0.4,
+		},
+	}
+
+	quantity := calculateAvailableQuantity(transactions, 1)
+
+	if quantity != 0.6 {
+		t.Fatalf("got quantity %v, want 0.6", quantity)
+	}
+}
+
+func TestCalculateAvailableQuantity_DifferentAssets(t *testing.T) {
+	transactions := []*model.Transaction{
+		{
+			AssetID:  1,
+			Type:     model.TransactionBuy,
+			Quantity: 1,
+		},
+		{
+			AssetID:  2,
+			Type:     model.TransactionBuy,
+			Quantity: 2,
+		},
+	}
+
+	quantity := calculateAvailableQuantity(transactions, 1)
+
+	if quantity != 1 {
+		t.Fatalf("got quantity %v, want 1", quantity)
+	}
+}
+
+func TestTransactionService_Create_InsufficientQuantity(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewTransactionService(repo, assetRepo)
+
+	buy := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy); err != nil {
+		t.Fatal(err)
+	}
+
+	sell := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 1.5,
+		Price:    120,
+	}
+
+	err := service.Create(context.Background(), sell)
+
+	if err == nil {
+		t.Fatal("expected insufficient quantity error")
+	}
+
+	if err.Error() != "insufficient quantity" {
+		t.Fatalf("got error %q, want %q", err.Error(), "insufficient quantity")
+	}
+}
+
+func TestTransactionService_Create_PartialSell(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewTransactionService(repo, assetRepo)
+
+	buy := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy); err != nil {
+		t.Fatal(err)
+	}
+
+	sell := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 0.4,
+		Price:    120,
+	}
+
+	if err := service.Create(context.Background(), sell); err != nil {
+		t.Fatal(err)
+	}
+
+	transactions, err := repo.FindByUserID(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(transactions) != 2 {
+		t.Fatalf("expected 2 transaction, got %d", len(transactions))
+	}
+}
+
+func TestTransactionService_Create_SellAll(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewTransactionService(repo, assetRepo)
+
+	buy := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy); err != nil {
+		t.Fatal(err)
+	}
+
+	sell := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 1,
+		Price:    120,
+	}
+
+	if err := service.Create(context.Background(), sell); err != nil {
+		t.Fatal(err)
+	}
+
+	transactions, err := repo.FindByUserID(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(transactions) != 2 {
+		t.Fatalf("expected 2 transaction, got %d", len(transactions))
+	}
+}
+
+func TestTransactionService_Create_SellAllStepByStep(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewTransactionService(repo, assetRepo)
+
+	buy := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy); err != nil {
+		t.Fatal(err)
+	}
+
+	sell1 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 0.4,
+		Price:    120,
+	}
+
+	if err := service.Create(context.Background(), sell1); err != nil {
+		t.Fatal(err)
+	}
+
+	sell2 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 0.6,
+		Price:    120,
+	}
+
+	if err := service.Create(context.Background(), sell2); err != nil {
+		t.Fatal(err)
+	}
+
+	transactions, err := repo.FindByUserID(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(transactions) != 3 {
+		t.Fatalf("expected 3 transaction, got %d", len(transactions))
+	}
+}
+
+func TestCalculateAvailableQuantity_FloatingPoint(t *testing.T) {
+	transactions := []*model.Transaction{
+		{
+			AssetID:  1,
+			Type:     model.TransactionBuy,
+			Quantity: 0.3,
+		},
+		{
+			AssetID:  1,
+			Type:     model.TransactionBuy,
+			Quantity: 0.2,
+		},
+	}
+
+	quantity := calculateAvailableQuantity(transactions, 1)
+	if quantity < 0.5-1e-9 || quantity > 0.5+1e-9 {
+		t.Fatalf("got quantity %v, want approximately 0.5", quantity)
+	}
+}
+
+func TestTransactionService_Create_SellAfterPositionClosed(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewTransactionService(repo, assetRepo)
+
+	buy := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy); err != nil {
+		t.Fatal(err)
+	}
+
+	sell1 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 1,
+		Price:    120,
+	}
+
+	if err := service.Create(context.Background(), sell1); err != nil {
+		t.Fatal(err)
+	}
+
+	sell2 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 0.1,
+		Price:    120,
+	}
+
+	err := service.Create(context.Background(), sell2)
+	if err == nil {
+		t.Fatal("expected insufficient quantity, got nil")
+	}
+	if err.Error() != "insufficient quantity" {
+		t.Fatalf("got error %q, want %q", err.Error(), "insufficient quantity")
+	}
+}
+
+func TestTransactionService_Create_SellOtherUserQuantity(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewTransactionService(repo, assetRepo)
+
+	buy := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy); err != nil {
+		t.Fatal(err)
+	}
+
+	sell := &model.Transaction{
+		UserID:   2,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 1,
+		Price:    120,
+	}
+
+	err := service.Create(context.Background(), sell)
+
+	if err == nil {
+		t.Fatal("expected insufficient quantity, got nil")
+	}
+	if err.Error() != "insufficient quantity" {
+		t.Fatalf("got error %q, want %q", err.Error(), "insufficient quantity")
+	}
+}
+
+func TestTransactionService_Create_Commission(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	transaction := &model.Transaction{
+		UserID:     1,
+		AssetID:    asset.ID,
+		Type:       model.TransactionBuy,
+		Quantity:   0.5,
+		Price:      60000,
+		Commission: 2.5,
+	}
+
+	err := service.Create(context.Background(), transaction)
+	if err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	got, err := repo.FindByID(context.Background(), transaction.ID)
+	if err != nil {
+		t.Errorf("got error %v, want %v", err, repository.ErrTransactionNotFound)
+	}
+	if got.Commission != transaction.Commission {
+		t.Errorf("got commission %f, want %f", got.Commission, transaction.Commission)
+	}
+}
+
+func TestTransactionService_Create_SellAfterBuyAgain(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewTransactionService(repo, assetRepo)
+
+	buy1 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy1); err != nil {
+		t.Fatal(err)
+	}
+
+	sell1 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 0.6,
+		Price:    120,
+	}
+
+	if err := service.Create(context.Background(), sell1); err != nil {
+		t.Fatal(err)
+	}
+
+	buy2 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 0.5,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy2); err != nil {
+		t.Fatal(err)
+	}
+
+	sell2 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionSell,
+		Quantity: 0.9,
+		Price:    120,
+	}
+
+	if err := service.Create(context.Background(), sell2); err != nil {
+		t.Fatal(err)
+	}
+
+	transactions, err := repo.FindByUserID(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(transactions) != 4 {
+		t.Fatalf("expected 4 transaction, got %d", len(transactions))
+	}
+}
+
+func TestTransactionService_Create_AssetNotFound(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+	service := NewTransactionService(repo, assetRepo)
+
+	transaction := &model.Transaction{
+		UserID:   1,
+		AssetID:  999,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	err := service.Create(context.Background(), transaction)
+
+	if err == nil {
+		t.Fatal("expected asset not found error, got nil")
+	}
+
+	transactions, err := repo.FindByUserID(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(transactions) != 0 {
+		t.Fatalf("expected 0 transactions, got %d", len(transactions))
+	}
+}
+
+func TestTransactionService_Create_SellCommission(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewTransactionService(repo, assetRepo)
+
+	buy1 := &model.Transaction{
+		UserID:   1,
+		AssetID:  asset.ID,
+		Type:     model.TransactionBuy,
+		Quantity: 1,
+		Price:    100,
+	}
+
+	if err := service.Create(context.Background(), buy1); err != nil {
+		t.Fatal(err)
+	}
+
+	sell1 := &model.Transaction{
+		UserID:     1,
+		AssetID:    asset.ID,
+		Type:       model.TransactionSell,
+		Quantity:   0.6,
+		Price:      120,
+		Commission: 2.5,
+	}
+
+	if err := service.Create(context.Background(), sell1); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := repo.FindByID(context.Background(), sell1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if created.Commission != 2.5 {
+		t.Fatalf("expected commision 2.5, got %f", created.Commission)
+	}
+}

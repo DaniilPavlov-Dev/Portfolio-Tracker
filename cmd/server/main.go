@@ -16,6 +16,22 @@ import (
 	"time"
 )
 
+func buildMux(userHandler *handler.UserHandler, assetHandler *handler.AssetHandler, authMiddleware *middleware.AuthMiddleware, transactionHandler *handler.TransactionHandler, portfolioHandler *handler.PortfolioHandler) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", handler.HealthHandler)
+	mux.HandleFunc("/register", userHandler.Register)
+	mux.HandleFunc("/login", userHandler.Login)
+	mux.HandleFunc("/assets", assetHandler.HandelCollection)
+	mux.HandleFunc("/assets/", assetHandler.HandelByID)
+	mux.Handle("/transactions", authMiddleware.RequireAuth(http.HandlerFunc(transactionHandler.HandleCollection)))
+	mux.Handle("/transactions/", authMiddleware.RequireAuth(http.HandlerFunc(transactionHandler.GetByID)))
+	mux.Handle("/me", authMiddleware.RequireAuth(http.HandlerFunc(userHandler.Me)))
+	mux.Handle("/portfolio", authMiddleware.RequireAuth(http.HandlerFunc(portfolioHandler.GetPortfolio)))
+
+	return mux
+}
+
 func main() {
 	log.Println("portfolio tracker starting...")
 
@@ -25,9 +41,6 @@ func main() {
 		Timeout: 5 * time.Second,
 	}
 	marketData := client.NewBinanceMarketDataProvider(httpClient)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", handler.HealthHandler)
 
 	ctx := context.Background()
 	userRepository, err := repository.NewPostgresRepository(ctx, cfg.DatabaseURL)
@@ -51,14 +64,7 @@ func main() {
 	portfolioService := service.NewPortfolioService(transactionRepository, assetRepository, marketData)
 	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
 
-	mux.HandleFunc("/register", userHandler.Register)
-	mux.HandleFunc("/login", userHandler.Login)
-	mux.HandleFunc("/assets", assetHandler.HandelCollection)
-	mux.HandleFunc("/assets/", assetHandler.HandelByID)
-	mux.Handle("/transactions", authMiddleware.RequireAuth(http.HandlerFunc(transactionHandler.HandleCollection)))
-	mux.Handle("/transactions/", authMiddleware.RequireAuth(http.HandlerFunc(transactionHandler.GetByID)))
-	mux.Handle("/me", authMiddleware.RequireAuth(http.HandlerFunc(userHandler.Me)))
-	mux.Handle("/portfolio", authMiddleware.RequireAuth(http.HandlerFunc(portfolioHandler.GetPortfolio)))
+	mux := buildMux(userHandler, assetHandler, authMiddleware, transactionHandler, portfolioHandler)
 
 	server := http.Server{
 		Addr:    ":" + cfg.Port,

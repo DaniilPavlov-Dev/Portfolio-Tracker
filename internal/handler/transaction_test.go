@@ -483,7 +483,7 @@ func TestTransactionHandler_GetByUserID_Unauthorized(t *testing.T) {
 
 	req := httptest.NewRequest(
 		http.MethodGet,
-		"/transactions?userId",
+		"/transactions",
 		nil,
 	)
 
@@ -532,6 +532,57 @@ func TestTransactionHandler_GetByID_Unauthorized(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.GetByID(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("got status %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestTransactionHandler_Create_Unauthorized(t *testing.T) {
+	repo := repository.NewMemoryTransactionRepository()
+	assetRepo := repository.NewMemoryAssetRepository()
+
+	asset := &model.Asset{
+		Symbol: "BTC",
+		Name:   "Bitcoin",
+	}
+
+	if err := assetRepo.Create(context.Background(), asset); err != nil {
+		t.Fatal(err)
+	}
+
+	service := service.NewTransactionService(repo, assetRepo)
+	handler := NewTransactionHandler(service)
+
+	request := struct {
+		AssetID    int64   `json:"assetId"`
+		Type       string  `json:"type"`
+		Quantity   float64 `json:"quantity"`
+		Price      float64 `json:"price"`
+		Commission float64 `json:"commission"`
+	}{
+		AssetID:  asset.ID,
+		Type:     "BUY",
+		Quantity: 0.5,
+		Price:    60000,
+	}
+
+	bodyJSON, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := bytes.NewBuffer(bodyJSON)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/transactions",
+		body,
+	)
+
+	rec := httptest.NewRecorder()
+
+	handler.Create(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("got status %d, want %d", rec.Code, http.StatusUnauthorized)

@@ -67,17 +67,42 @@ The service provides:
 
 
 
-## Development
+## Getting Started
 
-The project is currently under development.
+The application can be run locally using Docker Compose.
 
-For development and testing purposes, the application can be run using Docker Compose.
+## API
+
+### Health
+
+GET /health
+
+### Authentication
+
+POST /register
+POST /login
+GET /me
+
+### Assets
+
+GET /assets
+GET /assets/{id}
+
+### Transactions
+
+GET /transactions
+GET /transactions/{id}
+POST /transactions
+
+### Portfolio
+
+GET /portfolio
+
 
 ## Local Development
 
 ### Requirements
 
-- Go 1.27+
 - Docker
 - Docker Compose
 
@@ -91,6 +116,9 @@ POSTGRES_PASSWORD=postgres
 POSTGRES_DB=portfolio_tracker
 JWT_SECRET=dev-secret
 ```
+
+These values are intended for local development only.
+Do not use them in production.
 
 ### Start
 
